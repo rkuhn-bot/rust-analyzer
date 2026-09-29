@@ -3255,3 +3255,80 @@ const WITH_DEFAULT<T, const N: usize = { size_of::<T>() }>: usize = N;
         "#,
     );
 }
+
+#[test]
+fn generic_const_path_selects_false_impl() {
+    check_types(
+        r#"
+//- minicore: size_of
+trait IsFalse {}
+struct If<const B: bool>;
+impl IsFalse for If<false> {}
+
+trait Pick<I> {}
+struct Here;
+impl<E> Pick<Here> for E where If<{ IS_U8::<u16> }>: IsFalse {}
+
+const IS_U8<T>: bool = size_of::<T>() == size_of::<u8>();
+
+fn assert_sel<E, I>() -> I where E: Pick<I> { loop {} }
+
+fn different() {
+    let x = assert_sel::<u16, _>();
+      //^ Here
+}
+        "#,
+    );
+}
+
+#[test]
+fn generic_const_path_true_does_not_select_impl() {
+    check_types(
+        r#"
+//- minicore: size_of
+trait IsFalse {}
+struct If<const B: bool>;
+impl IsFalse for If<false> {}
+
+trait Pick<I> {}
+struct Here;
+impl<E> Pick<Here> for E where If<{ IS_U8::<u8> }>: IsFalse {}
+
+const IS_U8<T>: bool = size_of::<T>() == size_of::<u8>();
+
+fn assert_sel<E, I>() -> I where E: Pick<I> { loop {} }
+
+fn same() {
+    let x = assert_sel::<u8, _>();
+      //^ {unknown}
+}
+        "#,
+    );
+}
+
+#[test]
+fn generic_const_path_through_identity_macro() {
+    check_types(
+        r#"
+//- minicore: size_of
+macro_rules! pass { ($e:expr) => { $e }; }
+
+trait IsFalse {}
+struct If<const B: bool>;
+impl IsFalse for If<false> {}
+
+trait Pick<I> {}
+struct Here;
+impl<E> Pick<Here> for E where If<{ pass!(IS_U8::<u16>) }>: IsFalse {}
+
+const IS_U8<T>: bool = size_of::<T>() == size_of::<u8>();
+
+fn assert_sel<E, I>() -> I where E: Pick<I> { loop {} }
+
+fn different() {
+    let x = assert_sel::<u16, _>();
+      //^ Here
+}
+        "#,
+    );
+}
