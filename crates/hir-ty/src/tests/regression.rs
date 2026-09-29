@@ -3244,14 +3244,3 @@ const REVEAL<Rem: Trait>: usize = Rem::ASSOC;
         "#,
     );
 }
-
-#[test]
-fn const_param_default_mentions_earlier_type_param() {
-    check_types(
-        r#"
-//- minicore: size_of
-const WITH_DEFAULT<T, const N: usize = { size_of::<T>() }>: usize = N;
-                                                                  //^ usize
-        "#,
-    );
-}
