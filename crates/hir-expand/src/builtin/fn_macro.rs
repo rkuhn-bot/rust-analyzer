@@ -123,7 +123,6 @@ register_builtin! {
     (format_args_nl, FormatArgsNl) => format_args_nl_expand,
     (quote, Quote) => quote_expand,
     (pattern_type, PatternType) => pattern_type_expand,
-    (direct_const_arg, DirectConstArg) => identity_expand,
     (gca, Gca) => identity_expand,
 }
 
@@ -1008,8 +1007,8 @@ fn identity_expand(
     tt: &tt::TopSubtree,
     _span: Span,
 ) -> ExpandResult<tt::TopSubtree> {
-    // `direct_const_arg!` / `gca!` pass their argument through. Drop the call's
-    // delimiters so `{ gca!(PATH) }` lowers as `PATH`, not as `(PATH)`.
+    // `gca!` passes its argument through. Drop the call's delimiters so
+    // `{ gca!(PATH) }` lowers as `PATH`, not as `(PATH)`.
     let mut tt = tt.clone();
     tt.set_top_subtree_delimiter_kind(tt::DelimiterKind::Invisible);
     ExpandResult::ok(tt)
