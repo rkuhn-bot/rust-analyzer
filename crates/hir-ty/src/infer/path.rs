@@ -50,11 +50,15 @@ impl<'db> InferenceContext<'db> {
                 ValuePathResolution::NonGeneric(ty) => return Some((value, ty)),
             };
         let args = self.insert_type_vars(substs);
-        // MIR evaluates const paths from this resolution. Only consts that declare
-        // their own parameters need those args; associated consts in a generic impl
-        // keep the previous empty-args path.
+        // MIR evaluates const paths from this resolution. Record args only when
+        // the const declares its own parameters and its parent has none. A parent
+        // with parameters stays on the empty-args path, matching
+        // `explicit_args_for_generic_const`.
         if let ValueTyDefId::ConstId(const_id) = value_def
             && !hir_def::hir::generics::GenericParams::of(self.db, const_id.into()).is_empty()
+            && !crate::generics::generics(self.db, const_id.into())
+                .parent()
+                .is_some_and(|parent| !parent.has_no_params())
         {
             self.write_assoc_resolution(id, CandidateId::ConstId(const_id), args);
         }

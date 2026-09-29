@@ -3307,7 +3307,29 @@ fn same() {
 }
 
 #[test]
-fn generic_const_path_through_identity_macro() {
+fn assoc_const_with_own_params_in_generic_impl_keeps_fallthrough() {
+    check_types(
+        r#"
+//- minicore: size_of
+struct If<const B: bool>;
+
+trait Host {
+    fn probe();
+}
+impl<T> Host for T {
+    const IS_U8<U>: bool = size_of::<U>() == size_of::<u8>();
+    fn probe() {
+        let x: If<{ IS_U8::<u16> }>;
+          //^ If<_>
+    }
+}
+        "#,
+    );
+}
+
+/// Expands a `macro_rules` passthrough. This is not the `gca` builtin.
+#[test]
+fn generic_const_path_through_macro_rules() {
     check_types(
         r#"
 //- minicore: size_of

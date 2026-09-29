@@ -454,9 +454,12 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
         self.lower_expr_as_const(const_ref.expr, const_type)
     }
 
-    /// Generic arguments of `path` when it resolves to a const item that has parameters.
+    /// Generic arguments of `path` when it resolves to a const item that declares
+    /// parameters and whose parent has none.
     ///
-    /// `None` for every other path, including const items without parameters.
+    /// `None` for every other path. A const whose parent has parameters (an
+    /// associated const in a generic impl) would be filled with error arguments
+    /// here, so those paths keep the `ConstHasGenerics` fallthrough.
     pub(crate) fn explicit_args_for_generic_const(
         &mut self,
         path: &Path,
@@ -469,15 +472,19 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
             Some(hir_def::resolver::ValueNs::ConstId(id)) => id,
             _ => return None,
         };
-        // Parent generics (an associated const in a generic impl) are not this item's
-        // parameters. Those paths keep the previous `ConstHasGenerics` fallthrough.
+        // Own parameters only. Parent parameters are not substituted here.
         if GenericParams::of(self.db, const_id.into()).is_empty() {
+            return None;
+        }
+        if generics(self.db, const_id.into()).parent().is_some_and(|parent| !parent.has_no_params())
+        {
             return None;
         }
         let on_diagnostic = PathDiagnosticCallback {
             data: Either::Left(PathDiagnosticCallbackData(TypeRefId::from_raw(
                 la_arena::RawIdx::from_u32(0),
             ))),
+            // The dummy id and empty callback match `at_path_forget_diagnostics`.
             // Argument mismatches are still stored on the returned args as error types.
             callback: |_, _, _| {},
         };
