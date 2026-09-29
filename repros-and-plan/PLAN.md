@@ -2,6 +2,19 @@
 
 **Status: Approved** (2026-09-29), plus the quality-gates section below.
 
+**Update 2026-09-29, restack.** The four piece branches are one series on master `03fcb77246`. Each branch is the previous tip plus one squashed commit. The tips from before this restack are `rk/backup-piece-1-pre-restack` (`b57a42075a`), `rk/backup-piece-2-pre-restack` (`bf24c0b0d1`), `rk/backup-piece-3-pre-restack` (`8f6315995c`), and `rk/backup-piece-4-pre-restack` (`ab32b9e314`).
+
+| Piece | Branch | Base | SHA |
+| --- | --- | --- | --- |
+| 1 | `rk/piece-1-const-item-generics` | master `03fcb77246` | `4a185b501aed3124ab2b6e7a35bf57b39231fcb3` |
+| 2 | `rk/piece-2-gca-builtins` | piece 1 | `0af380d652447e26acf4ffc12e7c16ddb7e04f6a` |
+| 3 | `rk/piece-3-const-path` | piece 2 | `2bf1c42790a3123722606ce53a6273823cd4a9bb` |
+| 4 | `rk/piece-4-const-arg-expr-types` | piece 3 | `0464c0287e051f4fe7a70bc9e189168d4c413c51` |
+
+Piece 3 contains piece 1's strengthened const-param default test and piece 2's `gca` builtin. `generic_const_path_through_gca` lives on piece 3, so the builtin and the const-path lowering are tested together. Piece 4 is that series plus the const-argument type write. It is the merged tree; there is no fifth commit.
+
+The first nightly whose `library/core` defines `gca!` and whose gates are the post-[#163306](https://github.com/rust-lang/rust/pull/163306) names is `nightly-2026-09-26` (`5ceaf6608`, 2026-09-25), the nightly that contains the merge of that rename. `min_generic_const_args` is `gca_min_const_items`. `generic_const_args` is `gca_const_items`.
+
 **Update 2026-09-29, after the independent review.** Roland chose the `gca` names everywhere. Piece 2 registers only the builtin `gca` (identity expansion, invisible delimiters). It does not register `direct_const_arg`, and it does not alias the four feature renames from [rust-lang/rust#163306](https://github.com/rust-lang/rust/pull/163306). `UnstableFeatures::enable` inserts only the name written in `#![feature]`, and `is_enabled` is `all.contains`. The review wanted both macro names, because nightly-2026-09-04's `library/core` still says `#[rustc_builtin_macro(direct_const_arg)]` while current nightly says `#[rustc_builtin_macro(gca)]`. That old-name compatibility was dropped on purpose: Amaru will move to a fresh nightly when it switches to `gca`. Until then, analysis of amaru-gce as it stands reports the unimplemented-builtin error on `core::direct_const_arg!`. Piece 3 returns `None` from `explicit_args_for_generic_const` when a const has both parent parameters and its own, so those paths stay on the `ConstHasGenerics` fallthrough instead of becoming an `UnevaluatedConst` with error parent arguments.
 
 Documentation only. Nothing here has been implemented. No rust-analyzer source was edited, no Amaru source was edited, no pull request was opened.
@@ -105,12 +118,12 @@ Three different "feature" mechanisms exist. Only the first one looks up a name t
 
 **Done**, for the series, is the bar in (a): zero error-severity `diagnostics` in `amaru-pure-stage`, and zero `analysis-stats` `type` rows in `amaru-pure-stage`. The `miniprotocol.rs` E0308 stays.
 
-Dependency order, which is the PR order:
+Dependency order, which is the published branch order. Each branch contains the commits below it. Piece 2 does not need piece 1 to compile, and piece 4 does not need pieces 1–3 to type a const-argument expression, but the branches are stacked so a later branch includes the earlier fixes and the `gca!` path test.
 
 1. **Const-item generic parameters**, or nothing that evaluates `TYPES_EQ::<A, B>` can monomorphize.
-2. **Register `gca`**, identity expansion. No `direct_const_arg` registration and no feature-name alias. Independent of (1). Amaru's pinned source stays red until it says `gca` and until (3).
-3. **`path_to_const` builds `UnevaluatedConst` with the path's generic arguments, and that const evaluates.** Any such path, macro or not, feature or not. Needs (1). Needs (2) at the Amaru call sites.
-4. **Write expression types for const arguments in bodies.** Independent. Required for the done bar. Does not fix a hard error.
+2. **Register `gca`**, identity expansion. No `direct_const_arg` registration and no feature-name alias. Amaru's pinned source stays red until it says `gca` and until (3).
+3. **`path_to_const` builds `UnevaluatedConst` with the path's generic arguments, and that const evaluates.** Any such path, macro or not, feature or not. Needs (1). Needs (2) at the Amaru call sites, and the `gca!` fixture is on this branch because the branch contains (2).
+4. **Write expression types for const arguments in bodies.** Required for the done bar. Does not fix a hard error. This branch contains (1)–(3).
 
 Do not start with `unsized_const_params`, `adt_const_params`, `const_type_name`, or a new array-length solver. Those are not what the 43 rows are.
 
