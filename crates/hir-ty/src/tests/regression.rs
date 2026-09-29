@@ -3263,6 +3263,7 @@ const TEXT: &'static str = "hi";
 struct Remainder<const T: &'static str>;
 fn block_in_body() {
     let _x: Remainder<{ TEXT }>;
+                    //^^^^^^^^ &'static str
                       //^^^^ &'static str
 }
         "#,

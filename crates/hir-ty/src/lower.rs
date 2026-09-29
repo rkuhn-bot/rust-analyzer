@@ -492,7 +492,10 @@ impl<'db, 'a> TyLoweringContext<'db, 'a> {
             self.defined_anon_consts.push(konst);
         }
 
-        self.note_const_arg_expr_ty(expr_id, const_type);
+        // A failed const (a mistyped literal, for example) is not the expected type.
+        if konst.is_ok() {
+            self.note_const_arg_expr_ty(expr_id, const_type);
+        }
 
         konst.unwrap_or({
             // FIXME: Report an error.
