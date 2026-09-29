@@ -29,6 +29,7 @@ impl UnstableFeatures {
     #[inline]
     pub fn is_enabled(&self, feature: &Symbol) -> bool {
         self.all.contains(feature)
+            || gca_feature_alias(feature).is_some_and(|alias| self.all.contains(&alias))
     }
 
     #[inline]
@@ -69,10 +70,32 @@ macro_rules! define_unstable_features {
                     _ => {}
                 }
 
+                if let Some(alias) = gca_feature_alias(&feature) {
+                    self.all.insert(alias);
+                }
                 self.all.insert(feature);
             }
         }
     };
+}
+
+/// Either name in a pair from rust-lang/rust#163306 is the same gate.
+fn gca_feature_alias(feature: &Symbol) -> Option<Symbol> {
+    const PAIRS: &[(&Symbol, &Symbol)] = &[
+        (&sym::min_generic_const_args, &sym::gca_min_const_items),
+        (&sym::generic_const_args, &sym::gca_const_items),
+        (&sym::macroless_generic_const_args, &sym::gca_macroless_args),
+        (&sym::macroless_const_item_generic_const_args, &sym::gca_macroless_items),
+    ];
+    PAIRS.iter().find_map(|(old, new)| {
+        if feature == *old {
+            Some((*new).clone())
+        } else if feature == *new {
+            Some((*old).clone())
+        } else {
+            None
+        }
+    })
 }
 
 define_unstable_features! {
@@ -91,4 +114,55 @@ define_unstable_features! {
     deref_patterns,
     mut_ref,
     type_changing_struct_update,
+}
+
+#[cfg(test)]
+mod tests {
+    use intern::sym;
+    use test_fixture::WithFixture;
+
+    use crate::{nameres::crate_def_map, test_db::TestDB};
+
+    fn assert_alias(present: &str, present_sym: &intern::Symbol, other_sym: &intern::Symbol) {
+        let fixture = format!("#![feature({present})]\n");
+        let db = TestDB::with_files(&fixture);
+        let krate = db.fetch_test_crate();
+        let features = crate_def_map(&db, krate).features();
+        assert!(features.is_enabled(present_sym), "{present} should enable itself");
+        assert!(features.is_enabled(other_sym), "{present} should enable its alias");
+    }
+
+    #[test]
+    fn generic_const_arg_feature_names_alias_each_other() {
+        let pairs: &[(&str, &intern::Symbol, &str, &intern::Symbol)] = &[
+            (
+                "min_generic_const_args",
+                &sym::min_generic_const_args,
+                "gca_min_const_items",
+                &sym::gca_min_const_items,
+            ),
+            (
+                "generic_const_args",
+                &sym::generic_const_args,
+                "gca_const_items",
+                &sym::gca_const_items,
+            ),
+            (
+                "macroless_generic_const_args",
+                &sym::macroless_generic_const_args,
+                "gca_macroless_args",
+                &sym::gca_macroless_args,
+            ),
+            (
+                "macroless_const_item_generic_const_args",
+                &sym::macroless_const_item_generic_const_args,
+                "gca_macroless_items",
+                &sym::gca_macroless_items,
+            ),
+        ];
+        for (old, old_sym, new, new_sym) in pairs {
+            assert_alias(old, old_sym, new_sym);
+            assert_alias(new, new_sym, old_sym);
+        }
+    }
 }

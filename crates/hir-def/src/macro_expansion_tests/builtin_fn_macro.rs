@@ -659,3 +659,31 @@ fn main() {
     "#]],
     );
 }
+
+#[test]
+fn test_direct_const_arg_and_gca_expand() {
+    check(
+        r#"
+#[rustc_builtin_macro]
+macro_rules! direct_const_arg {() => {}}
+#[rustc_builtin_macro(gca)]
+macro_rules! gca {() => {}}
+
+fn main() {
+    direct_const_arg!(TYPES_EQ::<A, B>);
+    gca!(TYPES_EQ::<A, B>);
+}
+"#,
+        expect![[r#"
+#[rustc_builtin_macro]
+macro_rules! direct_const_arg {() => {}}
+#[rustc_builtin_macro(gca)]
+macro_rules! gca {() => {}}
+
+fn main() {
+    TYPES_EQ::<A, B>;
+    TYPES_EQ::<A, B>;
+}
+"#]],
+    );
+}
