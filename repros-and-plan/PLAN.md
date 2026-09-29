@@ -1,6 +1,6 @@
 # Plan: rust-analyzer vs amaru typestate (`rk/remove-gce-warnings`)
 
-**Status: Final for review** (2026-09-29).
+**Status: Approved** (2026-09-29), plus the quality-gates section below.
 
 Documentation only. Nothing here has been implemented. No rust-analyzer source was edited, no Amaru source was edited, no pull request was opened.
 
@@ -206,6 +206,60 @@ No open questions remain.
 - **`type const`.** rust-analyzer grew a parser for it ([#22046](https://github.com/rust-lang/rust-analyzer/pull/22046)). rustc deleted the syntax in [#162517](https://github.com/rust-lang/rust/pull/162517). The const-item work is `const NAME<T>: Ty = …`, not `type const`.
 - **Generated lints.** A reviewer may want the old feature names added as aliases inside `ide-db/src/generated/lints.rs`. That file is codegen output. Hand edits will be wiped. The lookup that has to honor the alias is `UnstableFeatures` in `hir-def`.
 - **Expression-type PR looks like a no-op.** `check_types` on the binding stays green today. Reviewers will want the marker on the literal. Otherwise PR 4 will not be believed, and the 38 rows will remain. Those rows are part of the done bar.
+
+## Quality gates and code style
+
+Every PR in this series must pass the gates below and match the neighboring code. Sources: `CONTRIBUTING.md` (it points at the book), `docs/book/src/contributing/README.md`, `style.md`, `testing.md`, `architecture.md`, `.github/workflows/ci.yaml`, `.cargo/config.toml`, and `xtask`.
+
+### Commands committers run
+
+`.cargo/config.toml` aliases: `xtask` is `run --package xtask --bin xtask --`, `codegen` is `run --package xtask --bin xtask -- codegen`, `lint` is `clippy --all-targets -- --cap-lints warn`. The CI clippy command is stricter than `cargo lint`.
+
+The ubuntu tests job in `.github/workflows/ci.yaml` runs on every repository, including this fork:
+
+```
+cargo codegen --check
+cargo nextest run --no-fail-fast --hide-progress-bar
+cargo machete
+```
+
+`cargo codegen --check` fails when a generated file differs from what `xtask codegen` would write. Do not hand-edit those files.
+
+These jobs are wrapped in `if: github.repository == 'rust-lang/rust-analyzer'`, so GitHub will not run them on `rkuhn-bot/rust-analyzer`. They are still the committer gates. Run them locally before pushing:
+
+```
+cargo fmt -- --check
+cargo clippy --all-targets -- -D clippy::disallowed_macros -D clippy::dbg_macro -D clippy::todo -D clippy::print_stdout -D clippy::print_stderr
+```
+
+The fmt job uses stable `rustfmt`. The clippy job uses stable `clippy` plus stable `rust-src`, because clippy's output depends on whether `rust-src` is installed (rust-lang/rust-clippy#14625).
+
+`cargo xtask tidy` is not its own CI job. `xtask/src/tidy.rs` checks the `lsp/ext.rs` hash against `lsp-extensions.md`, trailing whitespace, `#[should_panic]` (banned outside an allowlist, unless the previous line contains `FIXME`), Cargo.toml dependency versions, the license set, tidy docs, and cov marks. `docs/book/src/contributing/architecture.md` says formatting and tidy are covered by `cargo test`, and that there are no further CI checks. That sentence is behind `ci.yaml`: CI also runs fmt, clippy, codegen, nextest, and machete as separate steps. Run tidy as well:
+
+```
+cargo xtask tidy
+```
+
+Also in `ci.yaml`, not part of proving these four pieces unless the change actually touches them:
+
+- `cargo miri test -p intern` (nightly miri). Piece 2 adds symbols in `intern`; run the intern tests. Miri is the extra gate.
+- `cargo build -p rust-analyzer`, then `analysis-stats` on the rust-analyzer repo and on the sysroot library.
+- Cross `cargo check` of `-p ide` for `powerpc-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, and `wasm32-unknown-unknown`.
+
+`docs/book/src/contributing/README.md`: `cargo test` is the local signal. Long tests are skipped unless `RUN_SLOW_TESTS=1`. CI itself runs `cargo nextest`, not `cargo test`. For each piece, run the tests of the crates that changed (`hir-def`, `hir-ty`, `hir-expand`, `intern`) under nextest, and `cargo test` for those crates if nextest is not installed. A green `cargo test` on the touched crates plus fmt, clippy, codegen `--check`, tidy, and machete is the bar. The workspace `rust-version` is 1.98. These gates run on stable. The nightly override on the rust-analyzer checkout is only for the Amaru release binary.
+
+### Style rules that apply to these pieces
+
+From `style.md` and `testing.md`. Match the function next to the edit (`ConstSignature` next to `FunctionSignature`, a new builtin next to the existing `register_builtin!` arms).
+
+- Small PRs. These four pieces are already that split. No new crates.io dependency. No new `pub` item beyond the `ConstSignature` field this plan already calls for, and keep that diff small.
+- PR titles from the user's perspective. Prefix `fix: ` (user-visible inference). `internal: ` only if nothing a user can see changed. Avoid `@mentions` in commit messages. `changelog [fix]` in the PR body is the other accepted mark. These branches are not opened as PRs here; the title prefix is still what the commit should carry.
+- Tests are minimal snippets in unindented raw strings. `//- minicore: …` is required: fixtures have no std (`crates/test-utils/src/fixture.rs`, flags listed at the top of `minicore.rs`). `check_types` labels the node that is wrong today (`//^ type`), not only the binding. `check_infer` uses `expect![[ ]]`; set `UPDATE_EXPECT=1` to fill it in rather than typing the ranges by hand. One `cov_mark` per test, and do not reuse a mark. No `#[should_panic]` (tidy enforces this). No `#[ignore]`: assert the wrong behavior and leave a FIXME (`style.md`; tidy does not scan for `ignore`).
+- Comments are sentences: capital letter, final period. For `.md` files the book asks for one sentence per line. This plan is already wrapped to match itself; new plan text stays wrapped. Code comments follow the sentence rule.
+- Do not allocate a `Vec` or `String` where an iterator or an existing owner will do. Prefer `rustc_hash::FxHashMap` and `FxHashSet`.
+- Boring names taken from the type. Established short names: `db`, `ctx`, `acc`, `res`, `it`, `n_foos`, `foo_idx`. Keyword mangling, not `r#`: `krate`, `ty`, `mac`, `func`, `enum_`, `trait_`. American spelling.
+- Clippy allows belong in `[workspace.lints.clippy]` in the workspace `Cargo.toml`. Do not add a one-off `#[allow]` unless the surrounding code already has that allow for the same reason.
+- Do not hand-edit `crates/ide-db/src/generated/lints.rs` or anything else `xtask codegen` writes. `crates/intern/src/symbol/symbols.rs` is hand-written `define_symbols!`; there is no symbols generator. Do not set `UPDATE_XFLAGS=1` unless `xtask/src/flags.rs` grammar changes. It should not.
 
 ## Measurements this plan is based on
 
